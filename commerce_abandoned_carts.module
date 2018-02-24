@@ -1,0 +1,35 @@
+<?php
+
+/**
+ * @file
+ * Contains commerce_abandoned_carts.module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+
+/**
+ * Implements hook_help().
+ */
+function commerce_abandoned_carts_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the commerce_abandoned_carts module.
+    case 'help.page.commerce_abandoned_carts':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Commerce Abandonned Carts') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function commerce_abandoned_carts_theme() {
+  return [
+    'commerce_abandoned_carts' => [
+      'render element' => 'children',
+    ],
+  ];
+}
