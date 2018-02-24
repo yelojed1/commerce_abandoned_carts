@@ -4,4 +4,6 @@ description: 'Commerce Abandonned Carts'
 core: 8.x
 package: 'prox-i'
 dependencies:
-  - commerce
+  - commerce_customer
+  - commerce_checkout
+  - mimemail
