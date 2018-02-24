@@ -7,3 +7,4 @@ dependencies:
   - commerce_customer
   - commerce_checkout
   - mimemail
+configure: 'commerce_abandonned_carts.settings'
