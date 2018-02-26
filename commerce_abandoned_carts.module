@@ -180,29 +180,3 @@ function commerce_abandoned_carts_mail($key, &$message, $params) {
   // Apply an input format to the message body
   $message['body'] = check_markup($message['body'], 'full_html', $langcode);
 }
-
-/**
- * Implementation of hook_theme
- */
-function commerce_abandoned_carts_theme() {
-  $default_template_path = drupal_get_path('module', 'commerce_abandoned_carts') . '/theme';
-  return array(
-    'commerce_abandoned_carts_email' => array(
-      'variables' => array('order' => NULL, 'order_number' => NULL, 'phone' => NULL),
-      'path' => $default_template_path,
-      'template' => 'commerce_abandoned_carts_email',
-    ),
-  );
-}
-
-/**
- * Implements hook_custom_theme().
- *
- * Hook to force cron to use our default theme
- */
-function commerce_abandoned_carts_custom_theme() {
-  if ($_GET['q'] == "admin/reports/status/run-cron" || $_GET['q'] == 'admin/config/system/cron/execute/commerce_abandoned_carts_cron' ||
-    (isset($_GET['cron_key']) && \Drupal::config()->get('cron_key') === $_GET['cron_key'])){
-    return \Drupal::config()->get('theme_default');
-  }
-}

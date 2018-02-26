@@ -1,7 +1,7 @@
 commerce_abandonned_carts.settings:
   path: '/admin/commerce/config/abandoned_carts'
   defaults:
-    _form: 'Drupal\commerce_abandonned_carts\Form\AdminForm'
+    _form: 'Drupal\commerce_abandoned_carts\Form\AdminForm'
     _title: 'Configure Abandonned carts'
   requirements:
     _permission: 'administer site configuration'
