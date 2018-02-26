@@ -207,7 +207,7 @@ class AdminForm extends ConfigFormBase {
 
     // Set the default timeout.
     if ($form_state->hasValue('commerce_abandoned_carts_timeout')) {
-      $config->set('format', $form_state->getValue('commerce_abandoned_carts_timeout'));
+      $config->set('commerce_abandoned_carts_timeout', $form_state->getValue('commerce_abandoned_carts_timeout'));
     }
     $config->save();
   }
