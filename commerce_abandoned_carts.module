@@ -6,6 +6,8 @@
  */
 
 use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Theme\ThemeManagerInterface;
+use Mirum\Helpers\Helpers;
 
 /**
  * Implements hook_help().
@@ -31,6 +33,14 @@ function commerce_abandoned_carts_theme() {
     'commerce_abandoned_carts' => [
       'render element' => 'children',
     ],
+    'commerce_abandoned_carts_email' => [
+      'variables' => [
+        'order' => NULL,
+        'order_number' => NULL,
+        'site_name' => NULL,
+        'phone' => NULL,
+      ],
+    ],
   ];
 }
 
@@ -38,82 +48,82 @@ function commerce_abandoned_carts_theme() {
  * Implements hook_cron().
  */
 function commerce_abandoned_carts_cron() {
-  $carts_timeout = \Drupal::config()->get('commerce_abandoned_carts_timeout');
+  $carts_timeout = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_timeout');
   $carts_timeout = $carts_timeout * 60; // converts minutes to seconds
-
-  $history_limit = \Drupal::config()->get('commerce_abandoned_carts_history_limit');
+  $time = REQUEST_TIME;
+  $history_limit = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_history_limit');
   $history_limit = $history_limit * 60; // converts minutes to seconds
 
-  $statuses = \Drupal::config()->get('commerce_abandoned_carts_abandoned_statuses');
-
+  $statuses = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_abandoned_statuses');
+  foreach ($statuses as $key => $value) {
+    if ($value != '') {
+      $status[$key] = $value;
+    }
+  }
   $select = db_select('commerce_order', 'o');
   $select->leftJoin('commerce_abandoned_carts', 'a', 'o.order_id = a.order_id');
-  $select->join('commerce_line_item', 'l', 'o.order_id = l.order_id');  // only query for carts that have line items in them
+  $select->join('commerce_order__field_status', 'l', 'o.order_id = l.entity_id');  // only query for carts that have line items in them
 
   // Select these specific fields for the output.
   $select->addField('o', 'order_id');
-  $select->addField('o', 'status');
+  $select->addField('l', 'field_status_value');
   $select->addField('o', 'mail');
   $select->condition('o.mail', '', '!=')
          ->isNull('a.status')
          ->condition('o.created', $time - $carts_timeout, '<')
          ->condition('o.created', $time - $history_limit, '>=')
-         ->condition('o.status', $statuses, 'IN')
+         ->condition('l.field_status_value', $statuses, 'IN')
          ->orderBy('o.created', 'ASC');
-
   $result = $select->execute()->fetchAll(\PDO::FETCH_ASSOC);
 
   $batch_num = 0;
 
   foreach ($result as $record) {
-    $order = commerce_order_load($record->order_id);
-    $batch_limit = \Drupal::config()->get('commerce_abandoned_carts_batch_limit');
+
+    $order =  \Drupal::entityTypeManager()->getStorage('commerce_order')->load($record['order_id']);
+    $batch_limit = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_batch_limit');
 
     // Is TEST mode enabled?
-    $test_mode = \Drupal::config()->get('commerce_abandoned_carts_testmode_active');
+    $test_mode = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_testmode_active');
 
     if ($test_mode == 1) {
-      //watchdog('commerce_abandoned_carts', 'Operating in TEST mode.');
-      $recipient = \Drupal::config()->get('commerce_abandoned_carts_testmode_email');
+      \Drupal::logger('commerce_abandoned_carts')->notice('Operating in TEST mode.');
+      $recipient = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_testmode_email');
     }
     else {
-      $recipient = $order->mail;
+      $recipient = Helpers::getStorageVal($order, 'mail', '');
     }
 
     // Send email
     $language = \Drupal::currentUser()->getPreferredLangcode();
     global $base_url;
 
-    $from = \Drupal::config()->get('commerce_abandoned_carts_from_email');
+    $from = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_from_email');
 
     if (empty($from)){
       $from = \Drupal::config()->get('site_mail');
     }
     global $base_url;
 
-    $default_theme = \Drupal::config()->get('theme_default');
-    if (theme_get_setting('toggle_logo')) {
-      $image = array(
-        'path' => theme_get_setting('logo', $default_theme),
-        'alt' => \Drupal::config()->get('site_name'),
-      );
-      $site_logo = theme('image', $image);
-    }
-
-    $phone = \Drupal::config()->get('commerce_abandoned_carts_customer_service_phone_number');
-    $from_name = \Drupal::config()->get('commerce_abandoned_carts_from_name');
+    $phone = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_customer_service_phone_number');
+    $from_name = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_from_name');
 
     $params['order'] = $order;
-    $params['subject'] = \Drupal::config()->get('commerce_abandoned_carts_subject');
+    $params['subject'] = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_subject');
     $params['from_name'] = $from_name;
     $params['reply-to'] = $from;
+    // Set up email template
+    $body_data = [
+       '#theme' => 'commerce_abandoned_carts_email',
+       '#order' => $order,
+       '#order_number' => $record['order_id'],
+       '#site_name' => \Drupal::config('system.site')->get('name'),
+       '#phone' => $phone,
+    ];
 
-    $params['body'] = theme('commerce_abandoned_carts_email', array(
-      'order'  => $order,
-      'order_number' => $order->order_number,
-      'site_name' => \Drupal::config()->get('site_name'),
-      'phone' => $phone,
-    ));
+    // Render the template to HTML
+    $params['body']  = \Drupal::service('renderer')->renderPlain($body_data)->__toString();;
+
     $mailManager = \Drupal::service('plugin.manager.mail');
     $module = 'commerce_abandoned_carts';
     $key = 'cac';
@@ -121,10 +131,10 @@ function commerce_abandoned_carts_cron() {
     $result = $mailManager->mail($module, $key, $recipient, $language, $params, NULL, $send);
 
     // Update record if not in test mode
-    if ($test_mode != 1){
+    if ($test_mode != 1) {
       $nid = db_insert('commerce_abandoned_carts')
         ->fields(array(
-          'order_id' => $order->order_number,
+          'order_id' => $record['order_id'],
           'status' => 1,
           'timestamp' => REQUEST_TIME,
         ))
@@ -136,7 +146,7 @@ function commerce_abandoned_carts_cron() {
       break;
     }
   }
-  //watchdog('commerce_abandoned_carts', 'Sent ' . $batch_num . ' abandoned cart emails.');
+  \Drupal::logger('commerce_abandoned_carts')->notice('Sent ' . $batch_num . ' abandoned cart emails.');
 }
 
 /**
@@ -144,13 +154,13 @@ function commerce_abandoned_carts_cron() {
  */
 function commerce_abandoned_carts_mail($key, &$message, $params) {
 
-  $langcode = isset($message['language']) ? $message['language']->language : \Drupal::currentUser()->getPreferredLangcode();
+/*  $langcode = isset($message['language']) ? $message['language']->language : \Drupal::currentUser()->getPreferredLangcode();
   $message['headers']['Content-Type'] = 'text/html; charset=UTF-8; format=flowed';
   $message['subject'] = $params['subject'];
 
   $from_name = $params['from_name'];
   if (empty($from_name)){
-    $from_name = \Drupal::config()->get('site_name');
+    $from_name = \Drupal::config('system.site')->get('name');
   }
 
   $message['from'] = $from_name;
@@ -162,14 +172,11 @@ function commerce_abandoned_carts_mail($key, &$message, $params) {
   $message['headers']['Return-Path'] = $params['reply-to'];
 
   // Send BCC to Admin if activated
-  if (\Drupal::config()->get('commerce_abandoned_carts_bcc_active') == 1){
-    $message['headers']['Bcc'] = \Drupal::config()->get('commerce_abandoned_carts_bcc_email');
+  if (\Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_bcc_active') == 1) {
+    $message['headers']['Bcc'] = \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_bcc_email');
 
-    /*Mandrill does not support Bcc so we'll add the Bcc address to the send list
-    * SEE: https://mandrill.zendesk.com/hc/en-us/articles/205582557-Can-I-send-to-more-than-one-recipient-at-a-time-
-    */
-    if(module_exists('mandrill')){
-      $message['to'] = $message['to'] . ',' . \Drupal::config()->get('commerce_abandoned_carts_bcc_email');
+     if(\Drupal::moduleHandler()->moduleExists('mandrill')){
+      $message['to'] = $message['to'] . ',' . \Drupal::config('commerce_abandoned_carts.settings')->get('commerce_abandoned_carts_bcc_email');
       $message['headers']['/X-MC-PreserveRecipients'] = 'False';
     }
   }
@@ -178,5 +185,5 @@ function commerce_abandoned_carts_mail($key, &$message, $params) {
   $message['subject'] = str_replace(array("\r\n", "\r", "\n"), ' ', $message['subject']);
 
   // Apply an input format to the message body
-  $message['body'] = check_markup($message['body'], 'full_html', $langcode);
+  $message['body'] = check_markup($message['body'], 'full_html', $langcode);*/
 }

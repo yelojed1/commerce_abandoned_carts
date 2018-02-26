@@ -88,11 +88,20 @@ class AdminForm extends ConfigFormBase {
 
     //TOFIX
     // Use the right function to return commerce_order_status.
-    //$statuses = '';
-    $options = array();
-    /*foreach ($statuses as $key => $status){
-      $options[$key] = $status['title'];
-    }*/
+    $options = [
+      'Commande en cours' => 'Commande en cours',
+      'Dossier incomplet' => 'Dossier incomplet',
+      'Dossier validé' => 'Dossier validé',
+      'Titre en cours de production' => 'Titre en cours de production',
+      'Titre en cours d’expédition' => 'Titre en cours d’expédition',
+    ];
+
+    /*$options = [
+      'canceled' => 'Canceled',
+      'pending' => 'Pending',
+      'processing' => 'Processing',
+      'completed' => 'Completed',
+    ];*/
 
     $form['commerce_abandoned_carts']['commerce_abandoned_carts_abandoned_statuses'] = [
       '#type'          => 'checkboxes',
@@ -115,11 +124,10 @@ class AdminForm extends ConfigFormBase {
       '#type'          => 'select',
       '#title'         => $this->t('Batch Limit'),
       '#options'       => $options,
-      '#default_value' => $config->get('commerce_abandoned_carts_batch_limit') ? $config->get('commerce_abandoned_carts_batch_limit') : 10,
+      '#default_value' => $config->get('commerce_abandoned_carts_batch_limit'),
       '#description'   => $this->t('What is the maximum emails to send per cron run? Note, larger batches may cause performance issues.'),
     ];
 
-    //TODO Add #element_validate to validate email.
     $form['commerce_abandoned_carts']['commerce_abandoned_carts_from_email'] = [
       '#type'          => 'textfield',
       '#title'         => $this->t('From Email Address'),
@@ -141,7 +149,7 @@ class AdminForm extends ConfigFormBase {
     $form['commerce_abandoned_carts']['commerce_abandoned_carts_subject'] = [
       '#type'          => 'textfield',
       '#title'         => $this->t('Subject Line'),
-      '#default_value' => $config->get('commerce_abandoned_carts_from_subject') ? $config->get('commerce_abandoned_carts_from_subject') : 'Your order is incomplete.',
+      '#default_value' => $config->get('commerce_abandoned_carts_subject') ? $config->get('commerce_abandoned_carts_subject') : 'Your order is incomplete.',
       '#size'          => 60,
       '#maxlength'     => 128,
       '#description'   => $this->t('Enter the subject of the email.'),
@@ -163,7 +171,6 @@ class AdminForm extends ConfigFormBase {
       '#description'   => $this->t('Would you like to send a Blind Carbon Copy of all Abandoned Cart messages to an admin account for monintoring?'),
     ];
 
-    //TODO add element validate for email.
     $form['commerce_abandoned_carts']['commerce_abandoned_carts_bcc_email'] = [
       '#type'          => 'textfield',
       '#title'         => $this->t('BCC Email Address'),
@@ -176,11 +183,10 @@ class AdminForm extends ConfigFormBase {
     $form['commerce_abandoned_carts']['commerce_abandoned_carts_testmode_active'] = [
       '#type'          => 'checkbox',
       '#title'         => $this->t('Enable Test Mode'),
-      '#default_value' => $config->get('commerce_abandoned_carts_testmode_active') ? $config->get('commerce_abandoned_carts_testmode_active') : 1,
+      '#default_value' => $config->get('commerce_abandoned_carts_testmode_active') ? $config->get('commerce_abandoned_carts_testmode_active') : 0,
       '#description'   => $this->t('When test mode is active all abandoned carts messages will be sent to the test email address instead of cart owner for testing purposes. When in test module the status of the message is not updated so the same messages will be sent on each cron run.'),
     ];
 
-    //TODO add element validate for email.
     $form['commerce_abandoned_carts']['commerce_abandoned_carts_testmode_email'] = [
       '#type'          => 'textfield',
       '#title'         => $this->t('Test Mode Email'),
@@ -197,6 +203,15 @@ class AdminForm extends ConfigFormBase {
    * {@inheritdoc}
    */
   public function validateForm(array &$form, FormStateInterface $form_state) {
+    if (!\Drupal::service('email.validator')->isValid($form_state->getValue('commerce_abandoned_carts_testmode_email'))) {
+      $form_state->setErrorByName('commerce_abandoned_carts_testmode_email', $this->t('Test Mode Email is invalid.'));
+    }
+    if (!\Drupal::service('email.validator')->isValid($form_state->getValue('commerce_abandoned_carts_from_email'))) {
+      $form_state->setErrorByName('commerce_abandoned_carts_from_email', $this->t('From Mode Email is invalid.'));
+    }
+    if (!\Drupal::service('email.validator')->isValid($form_state->getValue('commerce_abandoned_carts_bcc_email'))) {
+      $form_state->setErrorByName('commerce_abandoned_carts_bcc_email', $this->t('Bcc Email is invalid.'));
+    }
   }
 
   /**
@@ -205,9 +220,41 @@ class AdminForm extends ConfigFormBase {
   public function submitForm(array &$form, FormStateInterface $form_state) {
     $config = $this->config('commerce_abandoned_carts.settings');
 
-    // Set the default timeout.
     if ($form_state->hasValue('commerce_abandoned_carts_timeout')) {
       $config->set('commerce_abandoned_carts_timeout', $form_state->getValue('commerce_abandoned_carts_timeout'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_history_limit')) {
+      $config->set('commerce_abandoned_carts_history_limit', $form_state->getValue('commerce_abandoned_carts_history_limit'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_abandoned_statuses')) {
+      $config->set('commerce_abandoned_carts_abandoned_statuses', $form_state->getValue('commerce_abandoned_carts_abandoned_statuses'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_batch_limit')) {
+      $config->set('commerce_abandoned_carts_batch_limit', $form_state->getValue('commerce_abandoned_carts_batch_limit'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_from_email')) {
+      $config->set('commerce_abandoned_carts_from_email', $form_state->getValue('commerce_abandoned_carts_from_email'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_from_name')) {
+      $config->set('commerce_abandoned_carts_from_name', $form_state->getValue('commerce_abandoned_carts_from_name'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_subject')) {
+      $config->set('commerce_abandoned_carts_subject', $form_state->getValue('commerce_abandoned_carts_subject'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_customer_service_phone_number')) {
+      $config->set('commerce_abandoned_carts_customer_service_phone_number', $form_state->getValue('commerce_abandoned_carts_customer_service_phone_number'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_bcc_active')) {
+      $config->set('commerce_abandoned_carts_bcc_active', $form_state->getValue('commerce_abandoned_carts_bcc_active'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_bcc_email')) {
+      $config->set('commerce_abandoned_carts_bcc_email', $form_state->getValue('commerce_abandoned_carts_bcc_email'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_testmode_active')) {
+      $config->set('commerce_abandoned_carts_testmode_active', $form_state->getValue('commerce_abandoned_carts_testmode_active'));
+    }
+    if ($form_state->hasValue('commerce_abandoned_carts_testmode_email')) {
+      $config->set('commerce_abandoned_carts_testmode_email', $form_state->getValue('commerce_abandoned_carts_testmode_email'));
     }
     $config->save();
   }
